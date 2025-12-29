@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job Monitor - Bacterial Pipeline</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header>
+            <h1>🔍 Job Monitor</h1>
+            <p class="subtitle">Real-time pipeline execution monitoring</p>
+        </header>
+
+        <!-- Navigation with Back Button -->
+        <nav class="monitor-nav">
+            <a href="/#filters" class="btn btn-secondary back-btn" onclick="event.preventDefault(); window.location.href='/#filters';">
+                ← Back to Dashboard
+            </a>
+            <a href="/#filters" class="btn btn-primary back-to-filters-btn" onclick="handleBackToFilters(event)">
+                🔬 Back to Database Filters
+            </a>
+            <div class="monitor-controls">
+                <button id="endJobBtn" class="btn btn-danger" onclick="endJob()" style="display: none;">
+                    🛑 End Job
+                </button>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main>
+            <!-- Job Status Card -->
+            <div class="card" id="jobInfoCard">
+                <div class="job-header">
+                    <div style="flex-grow: 1;">
+                        <h2 id="jobTitle">Loading...</h2>
+                        <p id="jobId" class="text-muted">Job ID: {{ job_id }}</p>
+                    </div>
+                    <div>
+                        <span id="jobStatus" class="status-badge">queued</span>
+                    </div>
+                </div>
+
+                <!-- Progress Bar -->
+                <div class="progress-bar" role="progressbar"
+                     aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"
+                     aria-label="Job progress">
+                     <p class="progress-text" id="progressText">0%</p>
+                  <div id="progressFill" class="progress-fill" style="width: 0%"></div>
+                </div>
+
+                 <!-- Job Info -->
+                 <div class="job-info">
+                     <div class="info-row">
+                         <span class="info-label">Initial Input Sequences:</span>
+                         <span id="initialInput" class="info-value">-</span>
+                     </div>
+                     <div class="info-row">
+                         <span class="info-label">Current Step:</span>
+                         <span id="currentStep" class="info-value">-</span>
+                     </div>
+                     <div class="info-row">
+                         <span class="info-label">Started:</span>
+                         <span id="startTime" class="info-value">-</span>
+                     </div>
+                     <div class="info-row">
+                         <span class="info-label">Elapsed:</span>
+                         <span id="elapsedTime" class="info-value">-</span>
+                     </div>
+                 </div>
+            </div>
+
+            <!-- Configuration Card -->
+            <div class="card" id="configCard">
+                <h3>⚙️ Configuration</h3>
+                <div id="configInfo" class="config-grid">
+                    <!-- Config items will be populated by JS -->
+                    <p class="text-muted">Loading configuration...</p>
+                </div>
+            </div>
+
+
+            
+            <!-- Live Logs Card -->
+            <div class="card">
+                <div class="logs-header">
+                    <h2>📜 Live Logs</h2>
+                    <div class="log-controls">
+                        <button class="btn btn-small" onclick="clearLogs()">Clear</button>
+                        <button class="btn btn-small" onclick="toggleAutoScroll()">
+                            <span id="autoScrollText">Auto-scroll: ON</span>
+                        </button>
+                    </div>
+                </div>
+                <div id="logContainer" class="log-container">
+                    <div class="log-entry log-info">
+                        <span class="log-time">--:--:--</span>
+                        <span class="log-message">Waiting for logs...</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Results Card (shown when complete) -->
+            <div id="resultsCard" class="card" style="display: none;">
+                <h2>✅ Results</h2>
+                <div id="resultsContent"></div>
+                <div class="form-actions">
+                    <a href="/#results" class="btn btn-primary">View All Results</a>
+                    <a href="/#filters" class="btn btn-secondary" onclick="handleBackToFilters(event)">Back to Filters</a>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script>
+        const jobId = '{{ job_id }}';
+        let autoScroll = true;
+        let startTime = null;
+        let elapsedInterval = null;
+        let jobType = null;
+        let initialProgress = 0;
+
+        // Connect WebSocket
+        const socket = io();
+
+        socket.on('connect', function() {
+            console.log('Connected to server');
+            loadJobDetails();
+        });
+
+        socket.on('job_update', function(data) {
+            if (data.job_id === jobId) {
+                console.log('Job update received:', data.data);
+                updateJobDisplay(data.data);
+            }
+        });
+
+        socket.on('job_log', function(data) {
+            if (data.job_id === jobId) {
+                appendLog(data.log);
+            }
+        });
+
+        async function loadJobDetails() {
+            try {
+                const response = await fetch(`/api/job/${jobId}`);
+                const data = await response.json();
+                
+                if (data.error) {
+                    document.getElementById('jobTitle').textContent = 'Job not found';
+                    return;
+                }
+                
+                jobType = data.type;
+                updateJobDisplay(data);
+                
+                // Show End Job button if running
+                if (data.status === 'running' || data.status === 'queued') {
+                    document.getElementById('endJobBtn').style.display = 'block';
+                }
+                
+                // Load logs
+                if (data.logs) {
+                    data.logs.forEach(log => appendLog(log));
+                }
+                
+                // Load initial input
+                await loadInitialInputCount();
+                
+                // Subscribe to updates
+                socket.emit('subscribe_job', { job_id: jobId });
+
+            } catch (error) {
+                console.error('Error loading job:', error);
+                document.getElementById('jobTitle').textContent = 'Error loading job';
+            }
+        }
+
+        async function loadInitialInputCount() {
+            try {
+                const response = await fetch('/api/current_project');
+                const projData = await response.json();
+                
+                if (projData.project) {
+                    const infoResponse = await fetch(`/api/project_info/${projData.project}`);
+                    const data = await infoResponse.json();
+                    
+                    if (data.input_sequences) {
+                        document.getElementById('initialInput').textContent = data.input_sequences.toLocaleString();
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading initial input:', error);
+            }
+        }
+
+        function updateJobDisplay(job) {
+            // --- MODIFIED: Map for descriptive job titles ---
+            const jobTitles = {
+                'human': 'Database of Human Protein (HPD)',
+                'deg': 'Database of Essential Genes (DEG)',
+                'vfdb': 'Virulence Factor Database (VFDB)',
+                'eskape': 'Database of ESKAPE Proteins (PD-ESKAPE)', // Corrected typo from input
+                'pipeline_all': 'Full Pipeline Run',
+                'mutational_prep': 'Mutational Analysis Preparation',
+                'alignment': 'Sequence Alignment',
+                'structure_prediction': 'Structure Prediction'
+            };
+
+            // Title
+            document.getElementById('jobTitle').textContent = jobTitles[job.type] || job.type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            // Status
+            const statusBadge = document.getElementById('jobStatus');
+            const statusText = {
+                'queued': 'Queued',
+                'running': 'Running',
+                'completed': 'Completed',
+                'failed': 'Failed'
+            };
+            statusBadge.textContent = statusText[job.status] || job.status;
+            statusBadge.className = `status-badge status-${job.status === 'completed' ? 'completed' : job.status}`;
+            
+            let progress = job.progress || 0;
+            const progressBar = document.querySelector('.progress-bar');
+            if (progressBar) {
+                progressBar.setAttribute('aria-valuenow', progress);
+            }
+            document.getElementById('progressFill').style.width = progress + '%';
+            document.getElementById('progressText').textContent = Math.round(progress) + '%';
+
+            // Current step
+            document.getElementById('currentStep').textContent = job.current_step || 'Initializing...';
+
+            // Start time
+            if(job.started_at) document.getElementById('startTime').textContent = new Date(job.started_at).toLocaleString();
+
+            if (job.started_at) {
+                const started = new Date(job.started_at);
+
+                if (!startTime) {
+                    startTime = started;
+                    startElapsedTimer();
+                }
+                // Stop timer
+                if ((job.status === 'completed' || job.status === 'failed') && elapsedInterval) {
+                    clearInterval(elapsedInterval);
+                    elapsedInterval = null;
+                    if (job.runtime) {
+                        document.getElementById('elapsedTime').textContent = job.runtime;
+                    }
+                }
+            }
+
+            // --- UPDATED CONFIGURATION LOGIC ---
+            const configInfo = document.getElementById('configInfo');
+            configInfo.innerHTML = ''; // Clear previous content
+            if (job.type === 'Full Pipeline' && job.config) { // Check for 'Full Pipeline'
+                // Handle "Run All" job config (nested)
+                let configHtml = '';
+                for (const step in job.config) {
+                    const cfg = job.config[step];
+                    configHtml += `
+                        <div class="config-step-header">
+                            <strong>${step.toUpperCase()} Configuration</strong>
+                        </div>
+                        <div class="config-item">
+                            <span class="config-label">Threads:</span> <span>${cfg.threads}</span>
+                        </div>
+                        <div class="config-item">
+                            <span class="config-label">Identity:</span> <span>${cfg.identity}%</span>
+                        </div>
+                        <div class="config-item">
+                            <span class="config-label">Coverage:</span> <span>${cfg.coverage}%</span>
+                        </div>
+                        <div class="config-item">
+                            <span class="config-label">Cache:</span> <span>${cfg.cache ? 'Yes' : 'No'}</span>
+                        </div>
+                    `;
+                }
+                configInfo.innerHTML = configHtml;
+
+            } else if (job.config) {
+                // Handle single job config
+                configInfo.innerHTML = `
+                    <div class="config-item">
+                        <span class="config-label">Threads:</span>
+                        <span>${job.config.threads || '-'}</span>
+                    </div>
+                    <div class="config-item">
+                        <span class="config-label">Identity:</span>
+                        <span>${job.config.identity !== undefined ? job.config.identity + '%' : '-'}</span>
+                    </div>
+                    <div class="config-item">
+                        <span class="config-label">Coverage:</span>
+                        <span>${job.config.coverage !== undefined ? job.config.coverage + '%' : '-'}</span>
+                    </div>
+                    <div class="config-item">
+                        <span class="config-label">Cache:</span>
+                        <span>${job.config.cache !== undefined ? (job.config.cache ? 'Yes' : 'No') : '-'}</span>
+                    </div>
+                `;
+            }
+
+            // --- END UPDATED LOGIC ---
+            
+            // Hide End Job button when completed/failed
+            if (job.status === 'completed' || job.status === 'failed') {
+                document.getElementById('endJobBtn').style.display = 'none';
+            }
+            
+            // Show results
+            if (job.status === 'completed' && job.results) {
+                // For "Full Pipeline", results is nested. For single, it's flat.
+                // Check for a known property of single-job results.
+                if (job.results.passing_sequences !== undefined) {
+                    showResults(job.results); // Single job
+                } else if (job.results.eskape) { 
+                    // This is a "Full Pipeline" job, show the *final* step's results
+                    showResults(job.results.eskape);
+                }
+            }
+        }
+
+        function appendLog(log) {
+            const container = document.getElementById('logContainer');
+            // Clear "Waiting for logs" message
+            if (container.textContent.includes('Waiting for logs')) {
+                container.innerHTML = '';
+            }
+            
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${log.level}`;
+            
+            const time = new Date(log.timestamp).toLocaleTimeString();
+            entry.innerHTML = `
+                <span class="log-time">${time}</span>
+                <span class="log-message">${escapeHtml(log.message)}</span>
+            `;
+            
+            container.appendChild(entry);
+            
+            if (autoScroll) {
+                container.scrollTop = container.scrollHeight;
+            }
+        }
+
+        function startElapsedTimer() {
+            elapsedInterval = setInterval(() => {
+                if (startTime) {
+                    updateElapsedTime(Date.now() - startTime.getTime());
+                }
+            }, 1000);
+        }
+
+        function updateElapsedTime(elapsedMs) {
+            const seconds = Math.floor(elapsedMs / 1000);
+            const minutes = Math.floor(seconds / 60);
+            const hours = Math.floor(minutes / 60);
+            
+            const timeStr = `${hours}h ${minutes % 60}m ${seconds % 60}s`;
+            document.getElementById('elapsedTime').textContent = timeStr;
+        }
+
+        function showResults(results) {
+            const card = document.getElementById('resultsCard');
+            const content = document.getElementById('resultsContent');
+            
+            let html = '<div class="results-grid">';
+            
+            if (results.passing_sequences !== undefined) {
+                html += `
+                    <div class="result-item">
+                        <h3>${results.passing_sequences.toLocaleString()}</h3>
+                        <p>Passing Sequences</p>
+                    </div>
+                `;
+            }
+            
+            if (results.filtered_hits !== undefined) {
+                html += `
+                    <div class="result-item">
+                        <h3>${results.filtered_hits.toLocaleString()}</h3>
+                        <p>Filtered Hits</p>
+                    </div>
+                `;
+            }
+            
+            html += '</div><div class="file-downloads">';
+            
+            if (results.passing_file) {
+                html += `<a href="/api/download/${results.passing_file}" class="btn btn-secondary">📥 Download Passing Sequences</a>`;
+            }
+            
+            if (results.filtered_file) {
+                html += `<a href="/api/download/${results.filtered_file}" class="btn btn-secondary">📥 Download Filtered Results</a>`;
+            }
+            
+            html += '</div>';
+            
+            content.innerHTML = html;
+            card.style.display = 'block';
+        }
+
+        async function endJob() {
+            if (!confirm('Are you sure you want to end this job?')) return;
+            
+            try {
+                const response = await fetch(`/api/end_job/${jobId}`, { method: 'POST' });
+                const result = await response.json();
+                
+                if (result.success) {
+                    showNotification('Job ended successfully', 'success');
+                    document.getElementById('endJobBtn').style.display = 'none';
+                    
+                    const statusBadge = document.getElementById('jobStatus');
+                    statusBadge.textContent = 'Stopped';
+                    statusBadge.className = 'status-badge status-failed';
+                } else {
+                    showNotification('Error: ' + result.message, 'error');
+                }
+            } catch (error) {
+                showNotification('Error ending job', 'error');
+            }
+        }
+
+        function handleBackToFilters(event) {
+            event.preventDefault();
+            window.location.href = '/#filters';
+        }
+
+        function clearLogs() {
+            document.getElementById('logContainer').innerHTML = '';
+        }
+
+        function toggleAutoScroll() {
+            autoScroll = !autoScroll;
+            document.getElementById('autoScrollText').textContent = `Auto-scroll: ${autoScroll ? 'ON' : 'OFF'}`;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            notification.className = `notification notification-${type}`;
+            notification.textContent = message;
+            document.body.appendChild(notification);
+            setTimeout(() => notification.classList.add('show'), 10);
+            setTimeout(() => {
+                notification.classList.remove('show');
+                setTimeout(() => notification.remove(), 300);
+            }, 5000);
+        }
+
+        window.addEventListener('beforeunload', () => {
+            if (elapsedInterval) clearInterval(elapsedInterval);
+        });
+    </script>
+
+    <style>
+        .monitor-nav {
+            background: var(--bg-primary);
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: var(--shadow);
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .back-btn, .back-to-filters-btn {
+            text-decoration: none;
+        }
+
+        .monitor-controls {
+            margin-left: auto;
+            display: flex;
+            gap: 10px;
+        }
+
+        .job-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .job-info {
+            margin: 20px 0;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px;
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+            margin-bottom: 8px;
+        }
+
+        .info-label {
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+
+        .info-value {
+            font-weight: 700;
+            color: var(--primary-color);
+        }
+
+        .config-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .config-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px;
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+        }
+
+        .config-label {
+            font-weight: 500;
+            color: var(--text-secondary);
+        }
+
+        .logs-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .log-controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        .results-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .result-item {
+            text-align: center;
+            padding: 20px;
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+        }
+
+        .result-item h3 {
+            font-size: 2rem;
+            color: var(--primary-color);
+            margin-bottom: 10px;
+        }
+
+        .file-downloads {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 25px;
+            border-radius: 6px;
+            color: white;
+            font-weight: 500;
+            opacity: 0;
+            transform: translateY(-20px);
+            transition: all 0.3s;
+            z-index: 10000;
+            max-width: 400px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+        }
+        .config-grid { grid-template-columns: 1fr; }
+        .config-step-header {
+            grid-column: 1 / -1;
+            padding: 8px;
+            background: var(--bg-secondary);
+            margin-top: 10px;
+            border-radius: 4px;
+        }
+
+        .notification.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .notification-success { background: #10b981; }
+        .notification-error { background: #ef4444; }
+        .notification-info { background: #3b82f6; }
+        .notification-warning { background: #f59e0b; }
+    </style>
+</body>
+</html>

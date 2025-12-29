@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎯</text></svg>">
+    <title>Mutational Analysis - TargetX</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- Sticky wrapper for header and navigation -->
+        <div class="sticky-wrapper">
+            <!-- Header -->
+            <header>
+                <h1>🧬 Mutational Analysis</h1>
+                <p class="subtitle">Review selected proteins and their sequence variants.</p>
+                <div class="current-project" id="currentProject" style="display: none;">
+                    <span class="project-badge">Project: <strong id="projectName">-</strong></span>
+                    <button class="project-badge project-action-btn" onclick="changeProject()">↔️ Switch</button>
+                    <button class="project-badge btn-primary" onclick="openNewProject()">➕ New</button>
+                </div>
+                <div class="no-project" id="noProject" style="display: block;">
+                    <p class="text-muted">No project selected. Please select or create a project to begin.</p>
+                </div>
+            </header>
+
+            <!-- Main Navigation Tabs -->
+            <nav class="main-tabs">
+                <a href="/" class="tab-link" data-tab="targetx">
+                    <span class="tab-icon">🎯</span>
+                    <span class="tab-text">TargetX</span>
+                </a>
+                <a href="/monitor" class="tab-link" data-tab="monitor">
+                    <span class="tab-icon">📋</span>
+                    <span class="tab-text">Monitor</span>
+                </a>
+                <a href="/mutational_analysis" class="tab-link active" data-tab="mutation">
+                    <span class="tab-icon">🧬</span>
+                    <span class="tab-text">Mutational Analysis</span>
+                </a>
+                <a href="/structure_prediction" class="tab-link disabled" data-tab="structure">
+                    <span class="tab-icon">🔬</span>
+                    <span class="tab-text">Structure Prediction</span>
+                </a>
+                <a href="#" class="tab-link disabled" data-tab="library">
+                    <span class="tab-icon">📚</span>
+                    <span class="tab-text">Library Preparation</span>
+                    <span class="badge-soon">Soon</span>
+                </a>
+                <a href="#" class="tab-link disabled" data-tab="docking">
+                    <span class="tab-icon">⚛️</span>
+                    <span class="tab-text">Molecular Docking</span>
+                    <span class="badge-soon">Soon</span>
+                </a>
+            </nav>
+        </div>
+
+        <!-- Main Content -->
+        <!-- MODIFICATION: Add Master Progress Bar -->
+        <div id="masterProgressContainer" class="master-progress-container" style="display: none;">
+            <div class="progress-info">
+                <span id="masterProgressLabel">Preparing analysis assets...</span>
+                <span id="masterProgressText">0%</span>
+            </div>
+            <div class="progress-bar-master">
+                <div id="masterProgressFill" class="progress-fill-master" style="width: 0%;"></div>
+            </div>
+        </div>
+
+        <main>
+            <div class="card">
+                <div class="card-header">
+                    <div style="display: flex; align-items: center; gap: 15px;">
+                        <h2>Final Protein Selection</h2>
+                        <!-- MODIFICATION: Add a subtle loading indicator -->
+                        <div id="loadingIndicator" class="spinner-subtle" style="opacity: 0; transition: opacity 0.3s;"></div>
+                    </div>
+                    <div>
+                        <button onclick="showStructurePredictionModal()" class="btn btn-primary">Proceed to Structure Prediction →</button>
+                    </div>
+                </div>
+                <p>This is the list of proteins selected for mutational analysis. You can view variants or change your selection by going back to the TargetX Results tab.</p>
+                <table class="results-table" style="margin-top: 20px;">
+                    <thead>
+                        <tr>
+                            <th style="width: 5%;">Sr No.</th>
+                            <th style="width: 50%;">Protein Name</th>
+                            <th style="width: 10%; text-align: center;">Variant Count</th>
+                            <th style="width: 35%; text-align: center;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="mutationAnalysisProteinList">
+                        <tr>
+                            <td colspan="4" class="text-center text-muted">Loading selected proteins...</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+            </div>
+        </main>
+    </div>
+
+    <!-- Modals (re-used from main.js) -->
+    <div id="fileReaderModal" class="modal">
+        <div class="modal-content modal-large">
+            <span class="close" onclick="closeFileReaderModal()">&times;</span>
+            <!-- FIX: Add the download button to match index.html -->
+            <a id="downloadAlignmentBtn" href="#" class="close" style="right: 60px; text-decoration: none; font-size: 20px;" download title="Download Alignment File">
+                📥
+            </a>
+            <h2 id="modalFileTitle">File Reader</h2>
+            <pre id="modalFileContent">Loading...</pre>
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeFileReaderModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Project Selection Modal (copied from index.html) -->
+    <div id="projectModal" class="modal" style="display: none;">
+        <div class="modal-content modal-large">
+            <h2>📁 Project Selection</h2>
+            <p style="color: slategray; font-weight: 600;">
+                You must select or create a project to continue
+            </p>
+            
+            <div class="project-selection">
+                <div class="existing-projects" id="existingProjects">
+                    <h2>📂 Existing Projects</h2>
+                    <div id="projectsList" class="projects-list">
+                        <p style="color: slategray; font-weight:600;" class="text-muted">Loading projects...</p>
+                    </div>
+                </div>
+                
+                <div class="divider-vertical">OR</div>
+                
+                <div class="new-project">
+                    <h3>➕ Create New Project</h3>
+                    <form id="newProjectForm">
+                        <div class="form-group">
+                            <label for="projectNameInput">Project Name:</label>
+                            <input type="text" id="projectNameInput" placeholder="e.g., Klebsiella_2024" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="projectDescription">Description (optional):</label>
+                            <textarea id="projectDescription" rows="3" placeholder="Brief description of the project"></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Create New Project</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- NEW: Structure Prediction Confirmation Modal -->
+    <div id="structurePredictionModal" class="modal">
+        <div class="modal-content modal-medium">
+            <span class="close" onclick="closeStructurePredictionModal()">&times;</span>
+            <h2>Confirm Protein Selection</h2>
+            <p>The following proteins will be carried forward for structure prediction. Proteins marked as "Remove" are excluded.</p>
+            
+            <div class="results-table-container" style="max-height: 50vh; overflow-y: auto; margin-top: 20px;">
+                <table class="results-table">
+                    <thead>
+                        <tr>
+                            <th>Protein Name</th>
+                            <th style="width: 25%;">Classification</th>
+                            <th style="width: 15%; text-align: center;"><input type="checkbox" id="selectAllStructure" onclick="toggleAllStructureCheckboxes(this.checked)" title="Select/Deselect All"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="structurePredictionProteinList">
+                        <!-- Proteins will be injected by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="form-actions">
+                <span id="structurePredictionProteinCount" class="selection-count">0 proteins selected</span>
+                <div class="form-actions-buttons">
+                    <button type="button" class="btn btn-secondary" onclick="closeStructurePredictionModal()">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="confirmAndProceedToStructure()">Confirm & Proceed</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <!-- We can reuse main.js for helpers, but create a new one for page-specific logic -->
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/mutation_analysis.js') }}"></script>
+</body>
+</html>

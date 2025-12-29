@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Results - Bacterial Pipeline</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header>
+            <h1>📊 Pipeline Results</h1>
+            <p class="subtitle">View and download pipeline outputs</p>
+        </header>
+
+        <!-- Navigation -->
+        <nav>
+            <a href="/">Dashboard</a>
+            <a href="/results" class="active">Results</a>
+        </nav>
+
+        <!-- Main Content -->
+        <main>
+            <!-- Pipeline Funnel -->
+            <div class="card">
+                <h2>🔬 Pipeline Funnel</h2>
+                <div class="funnel-container">
+                    <div class="funnel-step" data-database="human">
+                        <div class="funnel-bar" style="width: 100%;">
+                            <span class="funnel-label">Human Filter</span>
+                            <span class="funnel-count" id="humanCount">-</span>
+                        </div>
+                    </div>
+                    <div class="funnel-arrow">↓</div>
+                    
+                    <div class="funnel-step" data-database="deg">
+                        <div class="funnel-bar" style="width: 80%;">
+                            <span class="funnel-label">DEG (Essential)</span>
+                            <span class="funnel-count" id="degCount">-</span>
+                        </div>
+                    </div>
+                    <div class="funnel-arrow">↓</div>
+                    
+                    <div class="funnel-step" data-database="vfdb">
+                        <div class="funnel-bar" style="width: 60%;">
+                            <span class="funnel-label">VFDB (Virulent)</span>
+                            <span class="funnel-count" id="vfdbCount">-</span>
+                        </div>
+                    </div>
+                    <div class="funnel-arrow">↓</div>
+                    
+                    <div class="funnel-step" data-database="eskape">
+                        <div class="funnel-bar" style="width: 40%;">
+                            <span class="funnel-label">ESKAPE (Final)</span>
+                            <span class="funnel-count" id="eskapeCount">-</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="funnel-summary">
+                    <div class="summary-item">
+                        <h3 id="finalCount">-</h3>
+                        <p>Final Drug Targets</p>
+                    </div>
+                    <div class="summary-item">
+                        <h3 id="reductionRate">-</h3>
+                        <p>Reduction Rate</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Results by Step -->
+            <div class="card">
+                <h2>📁 Results by Step</h2>
+                
+                <div class="results-table">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Step</th>
+                                <th>Input</th>
+                                <th>Output</th>
+                                <th>Filtered</th>
+                                <th>Files</th>
+                            </tr>
+                        </thead>
+                        <tbody id="resultsTable">
+                            <tr>
+                                <td colspan="5" class="text-center">Loading...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Download Section -->
+            <div class="card">
+                <h2>📥 Download Results</h2>
+                <div id="downloadSection" class="download-grid">
+                    <p class="text-muted">No results available</p>
+                </div>
+            </div>
+
+            <!-- Statistics -->
+            <div class="card">
+                <h2>📈 Statistics</h2>
+                <div id="statsSection" class="stats-grid">
+                    <div class="stat-card">
+                        <h3>-</h3>
+                        <p>Total Input</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>-</h3>
+                        <p>Human-like Removed</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>-</h3>
+                        <p>Essential Found</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>-</h3>
+                        <p>Virulent Found</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>-</h3>
+                        <p>ESKAPE Found</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>-</h3>
+                        <p>Final Targets</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Selection Modal -->
+    <div id="selection-modal" class="modal" style="display: none;">
+        <div class="modal-content modal-large">
+            <span class="close" onclick="closeSelectionModal()">&times;</span>
+            <h2>Select Final Protein Targets</h2>
+            <p>Review and select proteins from the final ESKAPE filter for further analysis.</p>
+
+            <div class="results-table-container" style="max-height: 60vh; overflow-y: auto; margin-top: 20px;">
+                <table class="results-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 5%;"><input type="checkbox" id="select-all-proteins"></th>
+                            <th>Protein Name</th>
+                            <th style="width: 20%;">Variant Count</th>
+                        </tr>
+                    </thead>
+                    <tbody id="protein-table-body">
+                        <!-- Rows will be injected by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+            <div class="form-actions">
+                <button id="download-selected-btn" class="btn btn-secondary">Download Selected</button>
+                <button id="proceed-selected-btn" class="btn btn-primary">Proceed</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Load results on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadResults();
+            setupEventListeners();
+        });
+
+        async function loadResults() {
+            try {
+                // Load results for each database
+                const databases = ['human', 'deg', 'vfdb', 'eskape'];
+                const results = {};
+                
+                for (const db of databases) {
+                    const response = await fetch(`/api/results/${db}`);
+                    if (response.ok) {
+                        results[db] = await response.json();
+                    }
+                }
+                
+                // Update displays
+                updateFunnel(results);
+                updateTable(results);
+                updateDownloads(results);
+                updateStats(results);
+                
+            } catch (error) {
+                console.error('Error loading results:', error);
+            }
+        }
+
+        function updateFunnel(results) {
+            // Update counts
+            if (results.human && results.human.passing_sequences) {
+                document.getElementById('humanCount').textContent = 
+                    results.human.passing_sequences.toLocaleString();
+            }
+            if (results.deg && results.deg.passing_sequences) {
+                document.getElementById('degCount').textContent = 
+                    results.deg.passing_sequences.toLocaleString();
+            }
+            if (results.vfdb && results.vfdb.passing_sequences) {
+                document.getElementById('vfdbCount').textContent = 
+                    results.vfdb.passing_sequences.toLocaleString();
+            }
+            if (results.eskape && results.eskape.passing_sequences) {
+                const finalCount = results.eskape.passing_sequences;
+                document.getElementById('eskapeCount').textContent = 
+                    finalCount.toLocaleString();
+                document.getElementById('finalCount').textContent = 
+                    finalCount.toLocaleString();
+                
+                // Calculate reduction rate
+                if (results.human && results.human.passing_sequences) {
+                    const startCount = results.human.passing_sequences;
+                    const reductionRate = ((1 - finalCount / startCount) * 100).toFixed(1);
+                    document.getElementById('reductionRate').textContent = 
+                        reductionRate + '%';
+                }
+            }
+        }
+
+        function updateTable(results) {
+            const tbody = document.getElementById('resultsTable');
+            const databases = [
+                { name: 'human', label: 'Human Filter' },
+                { name: 'deg', label: 'DEG Filter' },
+                { name: 'vfdb', label: 'VFDB Filter' },
+                { name: 'eskape', label: 'ESKAPE Filter' }
+            ];
+            
+            let html = '';
+            let prevCount = null;
+            
+            databases.forEach(db => {
+                const result = results[db.name];
+                if (result && result.passing_sequences !== undefined) {
+                    const input = prevCount || '-';
+                    const output = result.passing_sequences.toLocaleString();
+                    const filtered = result.filtered_hits ? 
+                        result.filtered_hits.toLocaleString() : '-';
+                    
+                    html += `
+                        <tr>
+                            <td><strong>${db.label}</strong></td>
+                            <td>${input}</td>
+                            <td>${output}</td>
+                            <td>${filtered}</td>
+                            <td>
+                                ${result.passing_file ? `<a href="/api/download/${result.passing_file}" class="btn btn-small btn-secondary">📥 Download</a>` : ''}
+                                ${db.name === 'eskape' ? `<button id="selection-btn" class="btn btn-small btn-primary">Selection</button>` : ''}
+                            </td>
+                        </tr>
+                    `;
+                    
+                    prevCount = output;
+                }
+            });
+            
+            tbody.innerHTML = html || '<tr><td colspan="5" class="text-center">No results yet. Run the pipeline first.</td></tr>';
+        }
+
+        function updateDownloads(results) {
+            const section = document.getElementById('downloadSection');
+            const databases = ['human', 'deg', 'vfdb', 'eskape'];
+            
+            let html = '';
+            let hasResults = false;
+            
+            databases.forEach(db => {
+                const result = results[db];
+                if (result && (result.passing_file || result.filtered_file)) {
+                    hasResults = true;
+                    html += `
+                        <div class="download-card">
+                            <h3>${db.toUpperCase()}</h3>
+                            <div class="download-buttons">
+                                ${result.passing_file ? 
+                                    `<a href="/api/download/${result.passing_file}" class="btn btn-primary">
+                                        📥 Passing Sequences (${result.passing_sequences || 0})
+                                    </a>` : ''}
+                                ${result.filtered_file ? 
+                                    `<a href="/api/download/${result.filtered_file}" class="btn btn-secondary">
+                                        📋 Filtered Results (${result.filtered_hits || 0})
+                                    </a>` : ''}
+                                ${result.summary_file ? 
+                                    `<a href="/api/download/${result.summary_file}" class="btn btn-secondary">
+                                        📄 Summary Report
+                                    </a>` : ''}
+                            </div>
+                        </div>
+                    `;
+                }
+            });
+            
+            section.innerHTML = hasResults ? html : 
+                '<p class="text-muted">No results available. Run the pipeline first.</p>';
+        }
+
+        function updateStats(results) {
+            const statCards = document.querySelectorAll('.stat-card h3');
+            
+            // Total input
+            if (results.human && results.human.passing_sequences) {
+                statCards[0].textContent = results.human.passing_sequences.toLocaleString();
+            }
+            
+            // Human-like removed
+            if (results.human && results.human.filtered_hits) {
+                statCards[1].textContent = results.human.filtered_hits.toLocaleString();
+            }
+            
+            // Essential found
+            if (results.deg && results.deg.filtered_hits) {
+                statCards[2].textContent = results.deg.filtered_hits.toLocaleString();
+            }
+            
+            // Virulent found
+            if (results.vfdb && results.vfdb.filtered_hits) {
+                statCards[3].textContent = results.vfdb.filtered_hits.toLocaleString();
+            }
+            
+            // ESKAPE found
+            if (results.eskape && results.eskape.filtered_hits) {
+                statCards[4].textContent = results.eskape.filtered_hits.toLocaleString();
+            }
+            
+            // Final targets
+            if (results.eskape && results.eskape.passing_sequences) {
+                statCards[5].textContent = results.eskape.passing_sequences.toLocaleString();
+            }
+        }
+
+        function setupEventListeners() {
+            // Event listener for the selection button in the results table
+            const resultsTable = document.getElementById('resultsTable');
+            if (resultsTable) {
+                resultsTable.addEventListener('click', function(e) {
+                    if (e.target && e.target.id === 'selection-btn') {
+                        openSelectionModal();
+                    }
+                });
+            }
+
+            window.onclick = function(event) {
+                const selectionModal = document.getElementById('selection-modal');
+                // Close selection modal when clicking outside
+                if (event.target == selectionModal) {
+                    closeSelectionModal();
+                }
+            };
+        }
+
+        function openSelectionModal() {
+            const modal = document.getElementById('selection-modal');
+            if (modal) {
+                modal.style.display = 'block';
+                loadAndProcessFastaForSelection();
+            }
+        }
+
+        function closeSelectionModal() {
+            const modal = document.getElementById('selection-modal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+        }
+
+        async function loadAndProcessFastaForSelection() {
+            const tableBody = document.getElementById('protein-table-body');
+            if (!tableBody) return;
+
+            tableBody.innerHTML = `<tr><td colspan="3" class="text-center text-muted">Loading protein data...</td></tr>`;
+
+            try {
+                const response = await fetch('/api/view_file/eskape_passing.faa');
+                const data = await response.json();
+
+                if (!data.success) {
+                    throw new Error(data.error || 'Failed to fetch FASTA file.');
+                }
+
+                const fastaText = data.content;
+                const proteinCounts = new Map();
+
+                // Parse the FASTA text to get protein names and count variants
+                const lines = fastaText.split('\n');
+                lines.forEach(line => {
+                    if (line.startsWith('>')) {
+                        const firstSpaceIndex = line.indexOf(' ');
+                        if (firstSpaceIndex !== -1) {
+                            // Protein name is everything after the first space
+                            const proteinName = line.substring(firstSpaceIndex + 1).trim();
+                            proteinCounts.set(proteinName, (proteinCounts.get(proteinName) || 0) + 1);
+                        }
+                    }
+                });
+
+                // Convert the Map to an array of objects and sort alphabetically by name
+                const sortedData = Array.from(proteinCounts, ([name, count]) => ({ name, count }))
+                    .sort((a, b) => a.name.localeCompare(b.name));
+
+                // Render the table rows
+                if (sortedData.length > 0) {
+                    tableBody.innerHTML = sortedData.map(item => `
+                        <tr>
+                            <td><input type="checkbox" class="protein-checkbox" data-protein-name="${item.name}"></td>
+                            <td>${item.name}</td>
+                            <td>${item.count}</td>
+                        </tr>
+                    `).join('');
+                } else {
+                    tableBody.innerHTML = `<tr><td colspan="3" class="text-center text-muted">No proteins found in the final results file.</td></tr>`;
+                }
+
+            } catch (error) {
+                console.error("Error processing FASTA file for selection:", error);
+                if (tableBody) {
+                    tableBody.innerHTML = `<tr><td colspan="3" class="text-center text-muted">Error loading protein data.</td></tr>`;
+                }
+            }
+        }
+    </script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎯</text></svg>">
+    <title>Structure Prediction - TargetX</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- Sticky wrapper for header and navigation -->
+        <div class="sticky-wrapper">
+            <!-- Header -->
+            <header>
+                <h1>🔬 Structure Prediction</h1>
+                <p class="subtitle">Predict and visualize the 3D structure of selected proteins.</p>
+                
+                <!-- This project management UI is common and can be reused -->
+                <div class="current-project" id="currentProject" style="display: none;">
+                    <span class="project-badge">Project: <strong id="projectName">-</strong></span>
+                    <button class="project-badge project-action-btn" onclick="changeProject()">↔️ Switch</button>
+                    <button class="project-badge btn-primary" onclick="openNewProject()">➕ New</button>
+                </div>
+                <div class="no-project" id="noProject" style="display: block;">
+                    <p class="text-muted">No project selected. Please select or create a project to begin.</p>
+                </div>
+            </header>
+
+            <!-- Main Navigation Tabs -->
+            <nav class="main-tabs">
+                <a href="/" class="tab-link" data-tab="targetx">
+                    <span class="tab-icon">🎯</span>
+                    <span class="tab-text">TargetX</span>
+                </a>
+                <a href="/monitor" class="tab-link" data-tab="monitor">
+                    <span class="tab-icon">📋</span>
+                    <span class="tab-text">Monitor</span>
+                </a>
+                <a href="/mutational_analysis" class="tab-link disabled" data-tab="mutation">
+                    <span class="tab-icon">🧬</span>
+                    <span class="tab-text">Mutational Analysis</span>
+                </a>
+                <a href="/structure_prediction" class="tab-link active" data-tab="structure">
+                    <span class="tab-icon">🔬</span>
+                    <span class="tab-text">Structure Prediction</span>
+                </a>
+                <a href="#" class="tab-link disabled" data-tab="library">
+                    <span class="tab-icon">📚</span>
+                    <span class="tab-text">Library Preparation</span>
+                    <span class="badge-soon">Soon</span>
+                </a>
+                <a href="#" class="tab-link disabled" data-tab="docking">
+                    <span class="tab-icon">⚛️</span>
+                    <span class="tab-text">Molecular Docking</span>
+                    <span class="badge-soon">Soon</span>
+                </a>
+            </nav>
+        </div>
+
+        <!-- Main Content -->
+        <main>
+            <div class="card">
+                <div class="card-header" style="margin-bottom: 20px;">
+                    <h2>Proteins for Structure Prediction</h2>
+                </div>
+                <p>This is the list of proteins selected from the mutational analysis stage. You can run structure prediction tools on these proteins.</p>
+
+                <div id="proteinDropdownContainer" class="protein-dropdown-container" style="margin-top: 20px;">
+                    <!-- Protein dropdowns will be injected here by JavaScript -->
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <!-- NEW: Structure Viewer Modal -->
+    <div id="structureViewerModal" class="modal">
+        <div class="modal-content modal-large">
+            <span class="close" id="closeStructureViewerBtn">&times;</span>
+            <h2 id="structureViewerTitle">3D Structure Viewer</h2>
+            <div id="structureViewerBody" style="height: 60vh; position: relative; border: 1px solid var(--border-color); border-radius: 6px; margin-top: 15px;">
+                <!-- 3Dmol.js viewer will be injected here -->
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-primary" id="closeViewerModalFooterBtn">Close</button>
+            </div>
+        </div>
+    </div>
+    <!-- Common modals that are used across different pages. -->
+
+    <!-- File Reader Modal -->
+    <div id="fileReaderModal" class="modal">
+        <div class="modal-content modal-large">
+            <span class="close" onclick="closeFileReaderModal()">&times;</span>
+            <h2 id="modalFileTitle">File Reader</h2>
+            <pre id="modalFileContent">Loading...</pre>
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeFileReaderModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Project Selection Modal -->
+    <div id="projectModal" class="modal" style="display: none;">
+        <div class="modal-content modal-large">
+            <h2>📁 Project Selection</h2>
+            <p style="color: slategray; font-weight: 600;">
+                You must select or create a project to continue
+            </p>
+            <div class="project-selection">
+                <div class="existing-projects" id="existingProjects">
+                    <h2>📂 Existing Projects</h2>
+                    <div id="projectsList" class="projects-list">
+                        <p style="color: slategray; font-weight:600;" class="text-muted">Loading projects...</p>
+                    </div>
+                </div>
+                <div class="divider-vertical">OR</div>
+                <div class="new-project">
+                    <h3>➕ Create New Project</h3>
+                    <form id="newProjectForm">
+                        <div class="form-group">
+                            <label for="projectNameInput">Project Name:</label>
+                            <input type="text" id="projectNameInput" placeholder="e.g., Klebsiella_2024" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="projectDescription">Description (optional):</label>
+                            <textarea id="projectDescription" rows="3" placeholder="Brief description of the project"></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Create New Project</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/structure_prediction.js') }}"></script>
+    <script src="https://cdn.jsdelivr.net/npm/3dmol@2.0.4/build/3Dmol-min.js"></script>
+</body>
+</html>

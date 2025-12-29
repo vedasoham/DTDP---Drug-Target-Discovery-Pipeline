@@ -1,0 +1,92 @@
+{% extends "layout.html" %}
+{% block title %}Job Monitor{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="card">
+        <div class="card-header" style="margin-bottom: 20px;">
+            <h2><i class="fas fa-tasks"></i> Job Monitor</h2>
+            <div class="monitor-controls">
+                <button class="btn btn-secondary" onclick="loadAndDisplayAllJobs()">
+                    <i class="fas fa-sync-alt"></i> Refresh
+                </button>
+            </div>
+        </div>
+        <p>This page shows all jobs for the current project. Click on a job to view detailed logs.</p>
+        
+        <div id="all-jobs-container" style="margin-top: 20px;">
+            <!-- Jobs will be loaded here by JavaScript -->
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // This script is specific to the monitor overview page.
+    document.addEventListener('DOMContentLoaded', function() {
+        const projectCheckInterval = setInterval(() => {
+            if (currentProject) {
+                clearInterval(projectCheckInterval);
+                loadAndDisplayAllJobs(); // Initial load
+
+                // Set up WebSocket to listen for live updates
+                if (socket) {
+                    socket.on('job_update', function(data) {
+                        // When any job updates, just reload the whole list
+                        loadAndDisplayAllJobs();
+                    });
+                }
+            }
+        }, 100);
+    });
+
+    async function loadAndDisplayAllJobs() {
+        if (!currentProject) {
+            document.getElementById('all-jobs-container').innerHTML = '<p class="text-muted">Please select a project first.</p>';
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/jobs');
+            const data = await response.json();
+            const jobs = data.jobs || [];
+            
+            jobs.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+            const container = document.getElementById('all-jobs-container');
+            if (jobs.length === 0) {
+                container.innerHTML = '<p class="text-muted">No jobs found for this project.</p>';
+                return;
+            }
+
+            container.innerHTML = jobs.map(job => {
+                let statusClass = job.status;
+                if (job.status === 'running' || job.status === 'queued') statusClass += ' status-badge-gradient';
+
+                return `
+                <a href="/monitor/${job.id}" style="text-decoration: none; color: inherit;">
+                    <div class="job-card" style="margin-bottom: 15px; cursor: pointer;">
+                        <div class="job-header">
+                            <h4>${job.type} <small class="text-muted">(${job.id})</small></h4>
+                            <span class="status-badge status-${statusClass}">${job.status}</span>
+                        </div>
+                        <div class="job-meta" style="text-align: left; margin-top: 5px; margin-bottom: 10px; font-size: 0.85rem;">
+                            <span><strong>Created:</strong> ${new Date(job.created_at).toLocaleString()}</span> |
+                            <span><strong>Runtime:</strong> ${job.runtime || 'N/A'}</span>
+                        </div>
+                        ${ (job.status === 'running' || job.status === 'queued') ? `
+                        <div class="job-step-info" style="margin-top: 5px;">
+                            <span>${job.current_step || 'Waiting...'}</span>
+                        </div>` : ''}
+                    </div>
+                </a>`;
+            }).join('');
+
+        } catch (error) {
+            console.error('Error loading all jobs:', error);
+            document.getElementById('all-jobs-container').innerHTML = '<p class="text-muted" style="color: var(--danger-color);">Error loading jobs.</p>';
+        }
+    }
+</script>
+{% endblock %}
