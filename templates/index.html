@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎯</text></svg>">
+    <title>Bacterial Drug Target Pipeline</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <!-- Settings Button -->
+    <button class="settings-button" onclick="toggleSettingsPanel()" title="Settings">
+        ⚙️
+    </button>
+
+    <div class="container">
+        <!-- Sticky wrapper for header and navigation -->
+        <div class="sticky-wrapper">
+            <!-- Header -->
+            <header>
+                <h1>🧬 Bacterial Drug Target Discovery Pipeline</h1>
+                <p class="subtitle">Integrated Workflow for Novel Antibiotic Target Identification</p>
+                <!-- FIX: Better project display with Switch and New buttons -->
+                <div class="current-project" id="currentProject" style="display: none;">
+                    <span class="project-badge">Project: <strong id="projectName">-</strong></span>
+                    <button class="project-badge project-action-btn" onclick="changeProject()">↔️ Switch</button>
+                    <button class="project-badge btn-primary" onclick="openNewProject()">➕ New</button>
+                </div>
+                <!-- Show message when no project selected -->
+                <div class="no-project" id="noProject" style="display: block;">
+                    <p class="text-muted">No project selected. Please select or create a project to begin.</p>
+                </div>
+            </header>
+
+            <!-- Main Navigation Tabs -->
+            <nav class="main-tabs">
+                <a href="#" class="tab-link active" data-tab="targetx">
+                    <span class="tab-icon">🎯</span>
+                    <span class="tab-text">TargetX</span>
+                </a>
+                <a href="/monitor" class="tab-link" data-tab="monitor">
+                    <span class="tab-icon">📋</span>
+                    <span class="tab-text">Monitor</span>
+                </a>
+                <a href="/mutational_analysis" class="tab-link" data-tab="mutation">
+                    <span class="tab-icon">🧬</span>
+                    <span class="tab-text">Mutational Analysis</span>
+                </a>
+                <a href="#" class="tab-link disabled" data-tab="structure">
+                    <span class="tab-icon">🔬</span>
+                    <span class="tab-text">Structure Prediction</span>
+                    <span class="badge-soon">Soon</span>
+                </a>
+                <a href="#" class="tab-link disabled" data-tab="library">
+                    <span class="tab-icon">📚</span>
+                    <span class="tab-text">Library Preparation</span>
+                    <span class="badge-soon">Soon</span>
+                </a>
+                <a href="#" class="tab-link disabled" data-tab="docking">
+                    <span class="tab-icon">⚛️</span>
+                    <span class="tab-text">Molecular Docking</span>
+                    <span class="badge-soon">Soon</span>
+                </a>
+            </nav>
+
+            <!-- Sub-navigation for TargetX -->
+            <!-- Moved inside sticky-wrapper to make it sticky -->
+            <div class="sub-tabs">
+                <button class="sub-tab-btn active" data-section="input">
+                    📁 Input
+                </button>
+                <button class="sub-tab-btn" data-section="filters">
+                    🔬 Database Filters
+                </button>
+                <button class="sub-tab-btn" data-section="results">
+                    📊 Results
+                </button>
+            </nav>
+        </div>
+
+        <!-- Tab Content -->
+        <main>
+            <!-- TargetX Tab -->
+            <div id="targetx-content" class="tab-content active">
+                <!-- INPUT SECTION -->
+                <div id="input-section" class="sub-section active">
+                    <div class="card">
+                        <h2>📁 Input Sequences</h2>
+                        <p>Upload your bacterial protein sequences in FASTA format.</p>
+                        
+                        <!-- Upload Option -->
+                        <div class="input-option">
+                            <h3>Upload Sequence Files</h3>
+                            <div class="upload-area" id="uploadArea">
+                                <input type="file" id="fileInput" accept=".faa,.fasta,.fa" multiple style="display: none;">
+                                <div class="upload-content">
+                                    <span class="upload-icon">📤</span>
+                                    <p><strong>Click to upload</strong> or drag and drop</p>
+                                    <p class="text-muted">FASTA files (.faa, .fasta, .fa)</p>
+                                    <p class="text-muted" style="margin-top: 10px;">
+                                        <small>Select a project first to enable upload</small>
+                                    </p>
+                                </div>
+                            </div>
+                            <div id="uploadedFiles" class="uploaded-files"></div>
+                        </div>
+
+                        <!-- Input Statistics -->
+                        <div id="inputStats" class="stats-box" style="display: none;">
+                            <h3>Input Statistics</h3>
+                            <div class="stats-grid">
+                                <div class="stat-item">
+                                    <span class="stat-label">Total Files:</span>
+                                    <span class="stat-value" id="statTotalFiles">0</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">Total Sequences:</span>
+                                    <span class="stat-value" id="statTotalSeqs">Calculating...</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">Combined Size:</span>
+                                    <span class="stat-value" id="statTotalSize">0 MB</span>
+                                </div>
+                            </div>
+                            <div class="form-actions" style="justify-content: center;">
+                                <!-- NEW: Validate Files button -->
+                                <button id="validateFilesBtn" class="btn btn-secondary" style="margin-right: 10px;">
+                                    Validate Files
+                                </button>
+                                <button class="btn btn-primary" onclick="uploadAndProceed()">
+                                    Upload & Proceed to Filters →
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- DATABASE FILTERS SECTION -->
+                <div id="filters-section" class="sub-section">
+                    <div class="card">
+                        <h2>🔬 Database Filters</h2>
+                        <p>Progressive rejection strategy - run filters sequentially</p>
+                        
+                        <!-- Run All Button -->
+                        <div class="run-all-container">
+                            <button id="runAllBtn" class="btn btn-primary" onclick="runAllSteps()">
+                                ▶️ Run All Steps
+                            </button>
+                        </div>
+                        
+                        <!-- Pipeline Flow Diagram -->
+                        <div class="pipeline-flow">
+                            <div class="flow-step" data-step="input">
+                                <div class="flow-number">📁</div>
+                                <div class="flow-label">Input</div>
+                                <div class="flow-count" id="flowInputCount">-</div>
+                            </div>
+                            <div class="flow-arrow">→</div>
+                            
+                            <div class="flow-step" data-step="human">
+                                <div class="flow-number">1</div>
+                                <div class="flow-label">Human</div>
+                                <div class="flow-count" id="flowHumanCount">-</div>
+                            </div>
+                            <div class="flow-arrow">→</div>
+                            
+                            <div class="flow-step" data-step="deg">
+                                <div class="flow-number">2</div>
+                                <div class="flow-label">DEG</div>
+                                <div class="flow-count" id="flowDegCount">-</div>
+                            </div>
+                            <div class="flow-arrow">→</div>
+                            
+                            <div class="flow-step" data-step="vfdb">
+                                <div class="flow-number">3</div>
+                                <div class="flow-label">VFDB</div>
+                                <div class="flow-count" id="flowVfdbCount">-</div>
+                            </div>
+                            <div class="flow-arrow">→</div>
+                            
+                            <div class="flow-step" data-step="eskape">
+                                <div class="flow-number">4</div>
+                                <div class="flow-label">ESKAPE</div>
+                                <div class="flow-count" id="flowEskapeCount">-</div>
+                            </div>
+                        </div>
+
+                        <!-- Filter Cards -->
+                        <div class="filter-cards">
+                            <!-- Human Database -->
+                            <div class="filter-card" data-database="human" data-job-id="">
+                                <div class="filter-header">
+                                    <div class="filter-title" style="align-items: center;">
+                                        <span class="filter-number">1</span>
+                                        <h3>Database of Human Proteins (HPD)</h3>
+                                    </div>
+                                </div>
+                                <p class="filter-description">Remove proteins similar to human proteins to avoid host toxicity</p>
+                                <div class="filter-action">
+                                    <strong>Action:</strong> <span class="action-text">Remove Human Proteins</span>
+                                </div>
+                                <div class="filter-status" id="statusHuman">
+                                    <span class="status-badge status-not-started">Not Started</span>
+                                </div>
+                                <div class="filter-buttons">
+                                    <button class="btn btn-configure" onclick="configureFilter('human')" title="Configure">
+                                        ⚙️
+                                    </button>
+                                    <button class="btn btn-run" onclick="runFilter('human')" title="Run" disabled id="runBtnHuman">
+                                        ▶️
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- DEG Database -->
+                            <div class="filter-card" data-database="deg" data-job-id="">
+                                <div class="filter-header">
+                                    <div class="filter-title" style="align-items: center;">
+                                        <span class="filter-number">2</span>
+                                        <h3>Database of Essential Genes (DEG)</h3>
+                                    </div>
+                                </div>
+                                <p class="filter-description">Keep only essential proteins that bacteria cannot survive without</p>
+                                <div class="filter-action">
+                                    <strong>Action:</strong> <span class="action-text">Retain Essential Proteins</span>
+                                </div>
+                                <div class="filter-status" id="statusDeg">
+                                    <span class="status-badge status-not-started">Not Started</span>
+                                </div>
+                                <div class="filter-buttons">
+                                    <button class="btn btn-configure" onclick="configureFilter('deg')" title="Configure">
+                                        ⚙️
+                                    </button>
+                                    <button class="btn btn-run" onclick="runFilter('deg')" title="Run" disabled id="runBtnDeg">
+                                        ▶️
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- VFDB Database -->
+                            <div class="filter-card" data-database="vfdb" data-job-id="">
+                                <div class="filter-header">
+                                    <div class="filter-title" style="align-items: center;">
+                                        <span class="filter-number">3</span>
+                                        <h3>Virulence Factor Database (VFDB)</h3>
+                                    </div>
+                                </div>
+                                <p class="filter-description">Keep only virulence factors involved in bacterial pathogenesis</p>
+                                <div class="filter-action">
+                                    <strong>Action:</strong> <span class="action-text">Retain Proteins Causing Virulence</span>
+                                </div>
+                                <div class="filter-status" id="statusVfdb">
+                                    <span class="status-badge status-not-started">Not Started</span>
+                                </div>
+                                <div class="filter-buttons">
+                                    <button class="btn btn-configure" onclick="configureFilter('vfdb')" title="Configure">
+                                        ⚙️
+                                    </button>
+                                    <button class="btn btn-run" onclick="runFilter('vfdb')" title="Run" disabled id="runBtnVfdb">
+                                        ▶️
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- ESKAPE Database -->
+                            <div class="filter-card" data-database="eskape" data-job-id="">
+                                <div class="filter-header">
+                                    <div class="filter-title" style="align-items: center;">
+                                        <span class="filter-number">4</span>
+                                        <h3>Protein Database of ESKAPE Pathogens (PD-ESKAPE)</h3>
+                                    </div>
+                                </div>
+                                <p class="filter-description">Keep only proteins from ESKAPE priority antibiotic-resistant pathogens</p>
+                                <div class="filter-action">
+                                    <strong>Action:</strong> <span class="action-text">Retain the ESKAPE Proteins</span>
+                                </div>
+                                <div class="filter-status" id="statusEskape">
+                                    <span class="status-badge status-not-started">Not Started</span>
+                                </div>
+                                <div class="filter-buttons">
+                                    <button class="btn btn-configure" onclick="configureFilter('eskape')" title="Configure">
+                                        ⚙️
+                                    </button>
+                                    <button class="btn btn-run" onclick="runFilter('eskape')" title="Run" disabled id="runBtnEskape">
+                                        ▶️
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Active Jobs -->
+                        <div id="activeJobsSection" style="display: none;">
+                            <h3>🔄 Active Jobs</h3>
+                            <div id="activeJobsList"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- RESULTS SECTION -->
+                <div id="results-section" class="sub-section">
+                    <div class="card">
+                        <div class="card-header">
+                            <h2>📊 Results</h2>
+                            <div class="view-toggle">
+                                <button class="btn btn-small active" id="showTableBtn">Table</button>
+                                <button class="btn btn-small" id="showGraphBtn">Graph</button>
+                            </div>
+                        </div>
+                        <p>View and download pipeline outputs</p>
+                        <!-- Pipeline Summary -->
+                        <div class="results-summary">
+                            <div class="summary-card">
+                                <h3 id="finalTargetCount">-</h3>
+                                <p>Final Drug Targets</p>
+                                <small class="text-muted" >After all filters</small>
+                            </div>
+                            <div class="summary-card">
+                                <h3 id="reductionRate">-</h3>
+                                <p>Reduction Rate</p>
+                                <small class="text-muted">From initial input</small>
+                            </div>
+                            <div class="summary-card">
+                                <h3 id="totalRuntime">-</h3>
+                                <p>Total Runtime</p>
+                                <small class="text-muted">All steps combined</small>
+                            </div>
+                        </div>
+                        <div class="chart-container" id="chartView" style="position: relative; height:500px; width:100%; margin: 30px 0; display: none;">
+                            <canvas id="resultsChartCanvas"></canvas>
+                        </div>
+
+                        <!-- Results Table -->
+                        <div class="results-table-container" id="tableView" style="display: block;">
+                            <table class="results-table">
+                                <thead>
+                                    <tr>
+                                        <th>Step</th>
+                                        <th>Input</th>
+                                        <th>Output</th>
+                                        <th>Reduction</th>
+                                        <th>Files</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="resultsTableBody">
+                                    <tr>
+                                        <td colspan="6" class="text-center text-muted">
+                                            No results yet. Run the pipeline filters first.
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <div id="structure-content" class="tab-content">
+                <div class="card coming-soon">
+                    <h2>🔬 Structure Prediction</h2>
+                    <p class="text-muted">This module is under development</p>
+                </div>
+            </div>
+
+            <div id="library-content" class="tab-content">
+                <div class="card coming-soon">
+                    <h2>📚 Library Preparation</h2>
+                    <p class="text-muted">This module is under development</p>
+                </div>
+            </div>
+
+            <div id="docking-content" class="tab-content">
+                <div class="card coming-soon">
+                    <h2>⚛️ Molecular Docking</h2>
+                    <p class="text-muted">This module is under development</p>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- Project Selection Modal - MUST appear on startup -->
+    <div id="projectModal" class="modal" style="display: none;">
+        <div class="modal-content modal-large">
+            <h2>📁 Project Selection</h2>
+            <p style="color: slategray; font-weight: 600;">
+                You must select or create a project to continue
+            </p>
+            
+            <div class="project-selection">
+                <div class="existing-projects" id="existingProjects">
+                    <h2>📂 Existing Projects</h2>
+                    <div id="projectsList" class="projects-list">
+                        <p style="color: slategray; font-weight:600;" class="text-muted">Loading projects...</p>
+                    </div>
+                </div>
+                
+                <div class="divider-vertical">OR</div>
+                
+                <div class="new-project">
+                    <h3>➕ Create New Project</h3>
+                    <form id="newProjectForm">
+                        <div class="form-group">
+                            <label for="projectNameInput">Project Name:</label>
+                            <input type="text" id="projectNameInput" placeholder="e.g., Klebsiella_2024" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="projectDescription">Description (optional):</label>
+                            <textarea id="projectDescription" rows="3" placeholder="Brief description of the project"></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Create New Project</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Configuration Modal -->
+    <div id="configModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Configure <span id="modalDatabase"></span> Filter</h2>
+            
+            <form id="configForm">
+                <input type="hidden" id="database" name="database">
+                
+                <div class="form-group">
+                    <label for="threads">Number of Threads:</label>
+                    <input type="number" id="threads" name="threads" value="18" min="1" max="64">
+                    <small>Available CPUs: <span id="availableCpus">20</span></small>
+                </div>
+
+                <div class="form-group">
+                    <label for="identity">Minimum Identity (%):</label>
+                    <input type="number" id="identity" name="identity" value="35" min="0" max="100" step="0.1">
+                </div>
+
+                <div class="form-group">
+                    <label for="coverage">Minimum Coverage (%):</label>
+                    <input type="number" id="coverage" name="coverage" value="90" min="0" max="100" step="0.1">
+                </div>
+
+                <div class="form-group checkbox">
+                    <label>
+                        <input type="checkbox" id="skipBlast" name="skip_blast">
+                        Skip BLAST (use existing results)
+                    </label>
+                </div>
+
+                <div class="form-group checkbox">
+                    <label>
+                        <input type="checkbox" id="cache" name="cache" checked>
+                        Enable result caching
+                    </label>
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="saveConfigAndEnableRun()">Save Configuration</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="fileReaderModal" class="modal">
+        <div class="modal-content modal-large">
+            <span class="close" onclick="closeFileReaderModal()">&times;</span>
+            <!-- NEW: Download button for alignment file -->
+            <a id="downloadAlignmentBtn" href="#" class="close" style="right: 60px; text-decoration: none; font-size: 20px;" download title="Download Alignment File">
+                📥
+            </a>
+            <h2 id="modalFileTitle">File Reader</h2>
+            
+            <pre id="modalFileContent">Loading...</pre>
+    
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeFileReaderModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Literature Selection Modal -->
+    <div id="literatureModal" class="modal">
+        <div class="modal-content modal-large">
+            <span class="close" onclick="closeLiteratureModal()">&times;</span>
+            <h2 id="literatureModalTitle">Select Sequences for Literature Review</h2>
+            <p>Select the protein sequences you want to analyze further.</p>
+            
+            <div class="results-table-container" style="max-height: 60vh; overflow-y: auto; margin-top: 20px;">
+                <table class="results-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 5%;"><input type="checkbox" id="literatureSelectAll" title="Select/Deselect All"></th>
+                            <th>Proteins present</th>
+                            <th id="literatureVariantHeader" style="width: 25%;">Number of variants</th>
+                        </tr>
+                    </thead>
+                    <tbody id="literatureSequenceList">
+                        <!-- Rows will be injected by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+    
+            <div class="form-actions">
+                <span id="literatureSelectedCount" class="selection-count">0 sequences selected</span>
+                <div class="form-actions-buttons">
+                    <button type="button" class="btn btn-secondary" onclick="openDownloadOptionsModal()">Download Selected</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeLiteratureModal()">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="proceedToMutationAnalysis()">Proceed to Analysis</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- NEW: Validation Result Modal -->
+    <div id="validationResultModal" class="modal">
+        <div class="modal-content modal-medium">
+            <span class="close">&times;</span>
+            <h2>File Validation Results</h2>
+            <p>Review the detected issues. Select the fixes you want to apply automatically, then proceed with the upload.</p>            <div id="validationResultsContainer" class="validation-container" style="margin-top: 20px;">
+                <!-- Validation results will be injected here by main.js -->
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeValidationModal()">Cancel</button>
+                <button type="button" id="fixAndUploadBtn" class="btn btn-primary">Fix Selected & Upload</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Download Options Modal -->
+    <div id="downloadOptionsModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeDownloadOptionsModal()">&times;</span>
+            <h2>Download Proteins</h2>
+            <p>Choose your download format and which proteins to include.</p>
+            
+            <table class="download-options-table">
+                <tbody>
+                    <tr>
+                        <td class="option-label">Protein Format</td>
+                        <td class="option-choices">
+                            <label>
+                                <input type="radio" name="downloadFormat" value="sequences" checked>
+                                <span>Full sequences (.faa)</span>
+                            </label>
+                            <label>
+                                <input type="radio" name="downloadFormat" value="names">
+                                <span>Protein names only (.txt)</span>
+                            </label>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="option-label">Variants</td>
+                        <td class="option-choices">
+                            <label>
+                                <input type="checkbox" id="downloadAllVariants" checked>
+                                <span>From all input files</span>
+                            </label>
+                            <div id="downloadFileSourceContainer" style="display: none;">
+                                <select id="downloadFileSource">
+                                    <!-- Options will be populated by JS -->
+                                </select>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <button type="button" id="downloadSelectedBtn" class="btn btn-primary">Download Selected</button>
+            <button type="button" id="downloadAllBtn" class="btn btn-secondary">Download All Listed</button>
+        </div>
+    </div>
+
+
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <!-- Note: mutation_analysis.js is NOT needed on this page -->
+</body>
+</html>
